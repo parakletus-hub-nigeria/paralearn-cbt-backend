@@ -1,0 +1,182 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("CBT_DATABASE_URL")
+}
+
+// ── Multi-Tenancy & Workspace Abstraction ──────────────────────────────────
+model CbtWorkspace {
+  id          String        @id @default(cuid())
+  name        String        // "Greenfield College" or "Apex JAMB Academy"
+  type        WorkspaceType @default(STANDALONE_HALL)
+  externalId  String?       // Links to ParaLearn School.id if type == INSTITUTION
+  ownerName   String?
+  ownerEmail  String
+  credits     Int           @default(30) // Free candidate testing credits for independent tutors
+  apiKey      String?       @unique // e.g. "pln_live_sk_..." for external developers
+  webhookUrl  String?       // "https://external-app.com/api/cbt-webhook"
+  webhookSecret String?     // Shared secret for HMAC-SHA256 signature verification
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  exams       Exam[]
+  questions   Question[]
+  creditLogs  CandidateCreditLog[]
+
+  @@index([externalId])
+  @@index([ownerEmail])
+  @@index([apiKey])
+}
+
+enum WorkspaceType {
+  INSTITUTION
+  STANDALONE_HALL
+}
+
+// ── Exam Definition & Delivery Rules ───────────────────────────────────────
+model Exam {
+  id               String          @id @default(cuid())
+  workspaceId      String
+  title            String
+  instructions     String?
+  durationMins     Int             @default(60)
+  accessType       AccessType      @default(ACCESS_CODE)
+  accessCode       String          @unique // e.g. "PHY-2026-T1" or "JAMB-MOCK-26"
+  isPublished      Boolean         @default(false)
+  startsAt         DateTime?
+  endsAt           DateTime?
+  totalMarks       Float           @default(0)
+
+  // Anti-Cheat & Malpractice Policies
+  maxTabViolations Int             @default(3)
+  shuffleQuestions Boolean         @default(true)
+  shuffleChoices   Boolean         @default(true)
+  showResultAfter  Boolean         @default(true)
+
+  workspace        CbtWorkspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  questions        ExamQuestion[]
+  attempts         ExamAttempt[]
+
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+
+  @@index([workspaceId])
+  @@index([accessCode])
+  @@index([isPublished])
+}
+
+enum AccessType {
+  ROSTER_ONLY
+  PUBLIC_LINK
+  ACCESS_CODE
+}
+
+// ── Question Bank & Item Repository ─────────────────────────────────────────
+model Question {
+  id          String        @id @default(cuid())
+  workspaceId String
+  prompt      String        // Supports Text, Markdown & LaTeX formulas
+  type        QuestionType  @default(MCQ)
+  marks       Float         @default(1.0)
+  options     Json          // [{ id: "o1", text: "Ohm", isCorrect: true, keyLabel: "A" }]
+  explanation String?       // Post-exam solution notes
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  workspace   CbtWorkspace  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  examLinks   ExamQuestion[]
+
+  @@index([workspaceId])
+  @@index([type])
+}
+
+model ExamQuestion {
+  id         String   @id @default(cuid())
+  examId     String
+  questionId String
+  orderIndex Int      @default(0)
+
+  exam       Exam     @relation(fields: [examId], references: [id], onDelete: Cascade)
+  question   Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@unique([examId, questionId])
+  @@index([examId])
+}
+
+enum QuestionType {
+  MCQ
+  TRUE_FALSE
+  MULTI_SELECT
+  ESSAY
+}
+
+// ── High-Throughput Candidate Attempts ──────────────────────────────────────
+model ExamAttempt {
+  id            String        @id @default(cuid())
+  examId        String
+  candidateName String
+  candidatePin  String        // e.g. "849201"
+  studentId     String?       // Populated if candidate mapped from ParaLearn SIS
+  startedAt     DateTime      @default(now())
+  deadline      DateTime
+  submittedAt   DateTime?
+  score         Float?
+  totalMarks    Float?
+  percentage    Float?
+  grade         String?       // e.g. "A1", "B2", "C4", "F9"
+  status        AttemptStatus @default(IN_PROGRESS)
+
+  // Proctoring Telemetry Audit
+  violations    Int           @default(0)
+  antiCheatLogs Json?         // [{ type: "tab_switch", timestamp: "...", questionIdx: 14 }]
+  ipAddress     String?
+  userAgent     String?
+
+  exam          Exam          @relation(fields: [examId], references: [id], onDelete: Cascade)
+  answers       AttemptAnswer[]
+
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  @@unique([examId, candidatePin], name: "unique_exam_candidate_attempt")
+  @@index([examId, status])
+  @@index([studentId])
+}
+
+enum AttemptStatus {
+  IN_PROGRESS
+  SUBMITTED
+  DISQUALIFIED
+}
+
+model AttemptAnswer {
+  id           String      @id @default(cuid())
+  attemptId    String
+  questionId   String
+  selectedVal  Json        // { selected: "o1" } or text for theory
+  isCorrect    Boolean?
+  marksAwarded Float?
+  createdAt    DateTime    @default(now())
+
+  attempt      ExamAttempt @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+
+  @@unique([attemptId, questionId])
+  @@index([attemptId])
+}
+
+// ── Candidate Credit Log (Independent Tutors Monetization) ─────────────────
+model CandidateCreditLog {
+  id           String       @id @default(cuid())
+  workspaceId  String
+  amount       Int          // +30, -1
+  action       String       // "BONUS_SIGNUP", "EXAM_ATTEMPT", "PAYSTACK_TOPUP"
+  balanceAfter Int
+  createdAt    DateTime     @default(now())
+
+  workspace    CbtWorkspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId])
+}
