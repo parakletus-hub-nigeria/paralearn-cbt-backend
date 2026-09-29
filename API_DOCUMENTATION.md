@@ -139,7 +139,63 @@ Creates an autonomous exam hall workspace, allocates 30 free test credits, and r
 }
 ```
 
-#### 2. Get Workspace Profile & Credits
+#### 2. Examiner Sign-In & Workspace Recovery
+`POST /workspaces/login`
+
+Sign in as an existing examiner using registered email. Retrieves the workspace profile, API keys, remaining candidate credits, and aggregate counts (`exams`, `questions`). If the email is not yet registered, it automatically provisions an Exam Hall with 30 free credits so the examiner is never stranded.
+
+**Request Body:**
+```json
+{
+  "email": "tunde@apexedu.ng",
+  "password": "optional_secure_password"
+}
+```
+
+**Response (200 OK):**
+```json
+{
+  "id": "cly7q1m8x0001",
+  "name": "Apex Educational Centre",
+  "ownerName": "Dr. Tunde Fashola",
+  "ownerEmail": "tunde@apexedu.ng",
+  "credits": 30,
+  "apiKey": "pln_live_sk_7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2c",
+  "webhookSecret": "pln_whsec_1234567890abcdef1234567890abcdef",
+  "_count": {
+    "exams": 4,
+    "questions": 150
+  }
+}
+```
+
+#### 3. School SIS SSO Workspace Provisioning
+`POST /workspaces/institution`
+
+Provisions or synchronizes a multi-tenant exam hall linked to an accredited school in the ParaLearn School Information System (SIS). Automatically syncs school branding, principal access, and term sessions.
+
+**Request Body:**
+```json
+{
+  "schoolId": "sch_greendale_001",
+  "schoolName": "Greendale International Academy",
+  "email": "principal@greendale.edu.ng"
+}
+```
+
+**Response (200 OK / 201 Created):**
+```json
+{
+  "id": "ws_inst_99182",
+  "name": "Greendale International Academy",
+  "type": "INSTITUTION",
+  "schoolId": "sch_greendale_001",
+  "credits": 999999,
+  "apiKey": "pln_live_sk_greendale_key_991"
+}
+```
+
+#### 4. Get Workspace Profile & Credits
 `GET /workspaces/:id`
 
 **Response (200 OK):**
@@ -155,7 +211,7 @@ Creates an autonomous exam hall workspace, allocates 30 free test credits, and r
 }
 ```
 
-#### 3. Rotate API Key
+#### 5. Rotate API Key
 `POST /workspaces/:id/rotate-api-key`
 
 Immediately invalidates old key and issues a fresh one.
