@@ -1,5 +1,5 @@
 # ParaLearn CBT — External Developer API Documentation
-Version: `1.0.0` | Base URL: `https://cbt-api.pln.ng` (Sandbox: `http://localhost:4000`)
+Version: `1.1.0` | Base URL: `https://cbt-api.pln.ng`
 
 Welcome to the **ParaLearn Computer-Based Testing (CBT) API**. This documentation allows external applications—such as third-party Learning Management Systems (LMS), school portals, tutorial centre web/mobile apps, and recruitment assessment engines—to programmatically provision exams, manage question banks, deliver high-concurrency candidate tests, monitor proctoring telemetry in real time, and receive auto-graded results via webhooks.
 
@@ -220,7 +220,7 @@ Immediately invalidates old key and issues a fresh one.
 
 ### B. Exams Management
 
-#### 1. Create Exam
+#### 1. Create & Schedule Exam
 `POST /exams`
 
 **Headers:**
@@ -229,12 +229,14 @@ Immediately invalidates old key and issues a fresh one.
 **Request Body:**
 ```json
 {
-  "workspaceId": "cly7q1m8x0001",
-  "title": "JAMB UTME 2026 Mock — Physics & Chemistry",
-  "instructions": "Calculators are permitted on-screen. 40 questions to be answered in 60 minutes.",
+  "workspaceId": "ws_sample_0001",
+  "title": "UTME 2026 Mock — Mathematics",
+  "instructions": "Answer all 40 questions. Calculator permitted.",
   "durationMins": 60,
   "accessType": "ACCESS_CODE",
-  "accessCode": "JAMB-2026-PC1",
+  "accessCode": "MOCK-MTH-26",
+  "startsAt": "2026-10-02T09:00:00.000Z",
+  "endsAt": "2026-10-02T17:00:00.000Z",
   "maxTabViolations": 3,
   "shuffleQuestions": true,
   "shuffleChoices": true,
@@ -246,21 +248,46 @@ Immediately invalidates old key and issues a fresh one.
 ```json
 {
   "id": "exam_clx9921",
-  "workspaceId": "cly7q1m8x0001",
-  "title": "JAMB UTME 2026 Mock — Physics & Chemistry",
-  "accessCode": "JAMB-2026-PC1",
+  "workspaceId": "ws_sample_0001",
+  "title": "UTME 2026 Mock — Mathematics",
+  "accessCode": "MOCK-MTH-26",
   "durationMins": 60,
+  "startsAt": "2026-10-02T09:00:00.000Z",
+  "endsAt": "2026-10-02T17:00:00.000Z",
   "maxTabViolations": 3,
   "shuffleQuestions": true,
   "shuffleChoices": true,
   "showResultAfter": true,
-  "isPublished": false,
+  "isPublished": true,
   "totalMarks": 0,
   "createdAt": "2026-09-29T16:10:00.000Z"
 }
 ```
 
-#### 2. Publish / Update Exam
+#### 2. List Examinations in Workspace
+`GET /exams?workspaceId={id}`
+
+Returns an array of all active and scheduled exam rooms belonging to the specified workspace.
+
+**Response (200 OK):**
+```json
+[
+  {
+    "id": "exam_clx9921",
+    "title": "UTME 2026 Mock — Mathematics",
+    "accessCode": "MOCK-MTH-26",
+    "durationMins": 60,
+    "startsAt": "2026-10-02T09:00:00.000Z",
+    "endsAt": "2026-10-02T17:00:00.000Z",
+    "_count": {
+      "questions": 40,
+      "attempts": 14
+    }
+  }
+]
+```
+
+#### 3. Publish / Update Exam Schedule
 `PATCH /exams/:id`
 
 **Request Body:**
