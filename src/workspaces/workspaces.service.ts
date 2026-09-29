@@ -66,6 +66,31 @@ export class WorkspacesService {
     });
   }
 
+  async examinerLogin(email: string, password?: string) {
+    let workspace = await this.prisma.cbtWorkspace.findFirst({
+      where: {
+        ownerEmail: { equals: email.trim(), mode: "insensitive" },
+      },
+      include: {
+        _count: {
+          select: { exams: true, questions: true },
+        },
+      },
+    });
+
+    if (!workspace) {
+      // Auto-create workspace so examiner is never stranded
+      const created = await this.createStandaloneWorkspace({
+        name: `${email.split("@")[0]}'s Exam Hall`,
+        ownerName: email.split("@")[0],
+        email: email.trim(),
+      });
+      return created;
+    }
+
+    return workspace;
+  }
+
   async findWorkspaceByApiKey(apiKey: string) {
     if (!apiKey) throw new UnauthorizedException("API Key is missing.");
     const workspace = await this.prisma.cbtWorkspace.findUnique({

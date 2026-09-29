@@ -15,6 +15,12 @@ export class WorkspacesController {
     return this.workspacesService.createStandaloneWorkspace(body);
   }
 
+  @Post("login")
+  @ApiOperation({ summary: "Sign in to an existing Examiner / Exam Hall workspace" })
+  examinerLogin(@Body() body: { email: string; password?: string }) {
+    return this.workspacesService.examinerLogin(body.email, body.password);
+  }
+
   @Post("institution")
   @ApiOperation({ summary: "Sync or retrieve a ParaLearn School workspace via SSO" })
   createInstitution(@Body() body: { schoolId: string; schoolName: string; email: string }) {
