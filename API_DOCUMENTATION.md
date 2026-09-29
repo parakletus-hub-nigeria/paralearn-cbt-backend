@@ -116,25 +116,25 @@ Creates an autonomous exam hall workspace, allocates 30 free test credits, and r
 **Request Body:**
 ```json
 {
-  "name": "Apex Educational Centre",
-  "ownerName": "Dr. Tunde Fashola",
-  "email": "tunde@apexedu.ng",
-  "webhookUrl": "https://api.apexedu.ng/webhooks/cbt-results"
+  "name": "Standard Assessment Centre",
+  "ownerName": "Centre Administrator",
+  "email": "examiner@example.com",
+  "webhookUrl": "https://api.example.com/webhooks/cbt-results"
 }
 ```
 
 **Response (201 Created):**
 ```json
 {
-  "id": "cly7q1m8x0001",
-  "name": "Apex Educational Centre",
+  "id": "ws_sample_0001",
+  "name": "Standard Assessment Centre",
   "type": "STANDALONE_HALL",
-  "ownerName": "Dr. Tunde Fashola",
-  "ownerEmail": "tunde@apexedu.ng",
+  "ownerName": "Centre Administrator",
+  "ownerEmail": "examiner@example.com",
   "credits": 30,
-  "apiKey": "pln_live_sk_7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2c",
-  "webhookUrl": "https://api.apexedu.ng/webhooks/cbt-results",
-  "webhookSecret": "pln_whsec_1234567890abcdef1234567890abcdef",
+  "apiKey": "pln_live_sk_sample_••••••••••••••••",
+  "webhookUrl": "https://api.example.com/webhooks/cbt-results",
+  "webhookSecret": "pln_whsec_sample_••••••••••••••••",
   "createdAt": "2026-09-29T16:00:00.000Z"
 }
 ```
@@ -147,21 +147,21 @@ Sign in as an existing examiner using registered email. Retrieves the workspace 
 **Request Body:**
 ```json
 {
-  "email": "tunde@apexedu.ng",
-  "password": "optional_secure_password"
+  "email": "examiner@example.com",
+  "password": "your_secure_password"
 }
 ```
 
 **Response (200 OK):**
 ```json
 {
-  "id": "cly7q1m8x0001",
-  "name": "Apex Educational Centre",
-  "ownerName": "Dr. Tunde Fashola",
-  "ownerEmail": "tunde@apexedu.ng",
+  "id": "ws_sample_0001",
+  "name": "Standard Assessment Centre",
+  "ownerName": "Centre Administrator",
+  "ownerEmail": "examiner@example.com",
   "credits": 30,
-  "apiKey": "pln_live_sk_7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2c",
-  "webhookSecret": "pln_whsec_1234567890abcdef1234567890abcdef",
+  "apiKey": "pln_live_sk_sample_••••••••••••••••",
+  "webhookSecret": "pln_whsec_sample_••••••••••••••••",
   "_count": {
     "exams": 4,
     "questions": 150
@@ -177,9 +177,9 @@ Provisions or synchronizes a multi-tenant exam hall linked to an accredited scho
 **Request Body:**
 ```json
 {
-  "schoolId": "sch_greendale_001",
-  "schoolName": "Greendale International Academy",
-  "email": "principal@greendale.edu.ng"
+  "schoolId": "sch_sample_99182",
+  "schoolName": "Exemplar Academy",
+  "email": "admin@school.example.edu.ng"
 }
 ```
 
@@ -187,11 +187,11 @@ Provisions or synchronizes a multi-tenant exam hall linked to an accredited scho
 ```json
 {
   "id": "ws_inst_99182",
-  "name": "Greendale International Academy",
+  "name": "Exemplar Academy",
   "type": "INSTITUTION",
-  "schoolId": "sch_greendale_001",
+  "schoolId": "sch_sample_99182",
   "credits": 999999,
-  "apiKey": "pln_live_sk_greendale_key_991"
+  "apiKey": "pln_live_sk_sample_••••••••••••••••"
 }
 ```
 
@@ -201,8 +201,8 @@ Provisions or synchronizes a multi-tenant exam hall linked to an accredited scho
 **Response (200 OK):**
 ```json
 {
-  "id": "cly7q1m8x0001",
-  "name": "Apex Educational Centre",
+  "id": "ws_sample_0001",
+  "name": "Standard Assessment Centre",
   "credits": 28,
   "_count": {
     "exams": 4,
@@ -382,7 +382,7 @@ Initiates the candidate's test session, validates candidate PIN, sets sub-millis
   "candidatePin": "849201",
   "candidateName": "Oluwaseun Adeleke",
   "studentId": "ext_student_908",
-  "ipAddress": "102.89.34.12",
+  "ipAddress": "198.51.100.42",
   "userAgent": "Mozilla/5.0 Chrome/130.0"
 }
 ```
