@@ -59,6 +59,7 @@ model Exam {
   workspace        CbtWorkspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   questions        ExamQuestion[]
   attempts         ExamAttempt[]
+  candidates       Candidate[]
 
   createdAt        DateTime        @default(now())
   updatedAt        DateTime        @updatedAt
@@ -104,6 +105,33 @@ model ExamQuestion {
 
   @@unique([examId, questionId])
   @@index([examId])
+}
+
+model Candidate {
+  id            String          @id @default(cuid())
+  examId        String
+  candidateName String
+  candidatePin  String
+  studentId     String?
+  email         String?
+  phone         String?
+  status        CandidateStatus @default(REGISTERED)
+  metadata      Json?
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+
+  exam          Exam            @relation(fields: [examId], references: [id], onDelete: Cascade)
+
+  @@unique([examId, candidatePin], name: "unique_exam_candidate")
+  @@index([examId, status])
+  @@index([studentId])
+}
+
+enum CandidateStatus {
+  REGISTERED
+  STARTED
+  SUBMITTED
+  DISQUALIFIED
 }
 
 enum QuestionType {

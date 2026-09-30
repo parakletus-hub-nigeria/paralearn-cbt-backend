@@ -7,6 +7,7 @@ import { ExamsModule } from "./exams/exams.module";
 import { QuestionsModule } from "./questions/questions.module";
 import { AttemptsModule } from "./attempts/attempts.module";
 import { SyncModule } from "./sync/sync.module";
+import { CandidatesModule } from "./candidates/candidates.module";
 
 @Module({
   imports: [
@@ -19,6 +20,7 @@ import { SyncModule } from "./sync/sync.module";
     WorkspacesModule,
     ExamsModule,
     QuestionsModule,
+    CandidatesModule,
     AttemptsModule,
     SyncModule,
   ],

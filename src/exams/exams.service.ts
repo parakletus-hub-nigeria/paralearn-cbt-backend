@@ -232,15 +232,30 @@ export class ExamsService {
           },
           orderBy: { startedAt: "desc" },
         },
+        candidates: {
+          select: {
+            id: true,
+            candidateName: true,
+            candidatePin: true,
+            studentId: true,
+            email: true,
+            phone: true,
+            status: true,
+            createdAt: true,
+          },
+          orderBy: { createdAt: "desc" },
+        },
       },
     });
 
     if (!exam) throw new NotFoundException(`Exam ${examId} not found.`);
 
-    const totalEnrolled = exam.attempts.length;
+    const totalRegistered = exam.candidates.length;
+    const totalEnrolled = Math.max(totalRegistered, exam.attempts.length);
     const inProgress = exam.attempts.filter((a) => a.status === "IN_PROGRESS").length;
     const submitted = exam.attempts.filter((a) => a.status === "SUBMITTED").length;
     const disqualified = exam.attempts.filter((a) => a.status === "DISQUALIFIED").length;
+    const notStarted = Math.max(0, totalRegistered - exam.attempts.length);
 
     const submittedScores = exam.attempts
       .filter((a) => a.status === "SUBMITTED" && a.percentage !== null)
@@ -259,14 +274,18 @@ export class ExamsService {
         isPublished: exam.isPublished,
         totalQuestions: exam._count.questions,
         totalMarks: exam.totalMarks,
+        accessType: exam.accessType,
       },
       metrics: {
+        totalRegistered,
         totalEnrolled,
+        notStarted,
         inProgress,
         submitted,
         disqualified,
         averageScore,
       },
+      roster: exam.candidates,
       candidates: exam.attempts,
     };
   }

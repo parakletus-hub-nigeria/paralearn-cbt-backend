@@ -49,7 +49,7 @@ export class AttemptsService {
    */
   async startAttempt(dto: StartAttemptDto) {
     const normalizedCode = dto.accessCode.trim().toUpperCase();
-    const pin = dto.candidatePin.trim();
+    const pin = dto.candidatePin.trim().toUpperCase();
 
     // 1. Verify exam existence & publication status
     const exam = await this.prisma.exam.findUnique({
@@ -69,6 +69,19 @@ export class AttemptsService {
 
     if (!exam.isPublished) {
       throw new BadRequestException("This examination is not currently active or published.");
+    }
+
+    const rosterCandidate = await this.prisma.candidate.findUnique({
+      where: {
+        unique_exam_candidate: {
+          examId: exam.id,
+          candidatePin: pin,
+        },
+      },
+    });
+
+    if (exam.accessType === "ROSTER_ONLY" && !rosterCandidate) {
+      throw new ForbiddenException("This PIN is not registered on the candidate roster for this examination.");
     }
 
     // 2. Check timing window if scheduled
@@ -131,9 +144,9 @@ export class AttemptsService {
     const newAttempt = await this.prisma.examAttempt.create({
       data: {
         examId: exam.id,
-        candidateName: dto.candidateName.trim(),
+        candidateName: rosterCandidate?.candidateName ?? dto.candidateName.trim(),
         candidatePin: pin,
-        studentId: dto.studentId,
+        studentId: rosterCandidate?.studentId ?? dto.studentId,
         startedAt: now,
         deadline,
         status: "IN_PROGRESS",
@@ -141,6 +154,13 @@ export class AttemptsService {
         userAgent: dto.userAgent,
       },
     });
+
+    if (rosterCandidate) {
+      await this.prisma.candidate.update({
+        where: { id: rosterCandidate.id },
+        data: { status: "STARTED" },
+      });
+    }
 
     // 6. Initialize sub-millisecond Redis timer
     const timer = await this.redis.startTimer(newAttempt.id, exam.durationMins);
@@ -248,6 +268,14 @@ export class AttemptsService {
             },
           } as any,
         },
+      });
+
+      await this.prisma.candidate.updateMany({
+        where: {
+          examId: attempt.examId,
+          candidatePin: attempt.candidatePin,
+        },
+        data: { status: "DISQUALIFIED" },
       });
 
       return {
@@ -390,6 +418,14 @@ export class AttemptsService {
           grade,
           violations,
         },
+      });
+
+      await tx.candidate.updateMany({
+        where: {
+          examId: attempt.examId,
+          candidatePin: attempt.candidatePin,
+        },
+        data: { status: "SUBMITTED" },
       });
     });
 
