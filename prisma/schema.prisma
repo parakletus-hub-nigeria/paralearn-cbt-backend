@@ -1,5 +1,8 @@
 generator client {
-  provider = "prisma-client-js"
+  provider   = "prisma-client-js"
+  // Azure App Service (Windows) runs 32-bit Node, which can't load the default Node-API engine.
+  // The binary engine runs as a separate process, so it works regardless of Node's bitness.
+  engineType = "binary"
 }
 
 datasource db {

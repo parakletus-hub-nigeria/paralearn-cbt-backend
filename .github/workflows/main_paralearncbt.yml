@@ -36,8 +36,8 @@ jobs:
       - name: Remove dev dependencies
         run: npm prune --omit=dev
 
-      # Prisma ships WASM/edge engines for every database (~70 MB). The Node app on Windows only loads
-      # runtime/library.js and .prisma/client/query_engine-windows.dll.node, so drop the rest.
+      # Prisma ships WASM/edge engines for every database (~70 MB). With engineType = "binary" the app
+      # only loads runtime/binary.js and .prisma/client/query-engine-windows.exe, so drop the rest.
       - name: Trim runtime package
         shell: pwsh
         run: |
@@ -46,7 +46,7 @@ jobs:
             Where-Object { $_.Name -match '(wasm|^query_|^edge|^react-native|\.map$|\.mjs$)' } |
             Remove-Item -Force
           Get-ChildItem node_modules/.prisma/client -File |
-            Where-Object { $_.Name -match '(\.wasm$|^wasm|^edge)' } |
+            Where-Object { $_.Name -match '(\.wasm$|^wasm|^edge|\.dll\.node$)' } |
             Remove-Item -Force
           Remove-Item -Recurse -Force -ErrorAction SilentlyContinue node_modules/prisma, node_modules/@prisma/engines
           Get-ChildItem node_modules -Recurse -File -Include *.map, *.md, *.markdown |
