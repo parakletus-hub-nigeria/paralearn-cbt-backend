@@ -71,11 +71,47 @@ jobs:
     runs-on: ubuntu-latest
     needs: build
 
+    env:
+      PROFILE: ${{ secrets.AZUREAPPSERVICE_PUBLISHPROFILE_A3BDF8ECB32A4920981340EDA5441374 }}
+
     steps:
       - name: Download artifact from build job
         uses: actions/download-artifact@v4
         with:
           name: node-app
+
+      # Kudu (the App Service deploy endpoint) helpers, authenticated with the publish profile
+      - name: Prepare Kudu access
+        run: |
+          attr() { echo "$PROFILE" | grep -o "$1=\"[^\"]*\"" | head -1 | cut -d'"' -f2; }
+          echo "::add-mask::$(attr userPWD)"
+          {
+            echo "KUDU_AUTH=$(attr userName):$(attr userPWD)"
+            echo "SCM=https://$(attr publishUrl | cut -d: -f1)"
+          } >> "$GITHUB_ENV"
+          cat > kudu.sh <<'SH'
+          kudu() { curl -sS -u "$KUDU_AUTH" "$@"; }
+          cmd() {
+            kudu -H "Content-Type: application/json" -X POST "$SCM/api/command" \
+              -d "$(jq -n --arg c "$1" '{command: $c, dir: "D:\\home"}')" | jq -r '.Output, .Error'
+          }
+          SH
+
+      # Uploads are staged in the instance's local temp before landing in SitePackages. Earlier
+      # oversized deploys filled it, which truncated every upload at ~80 KB and caused HTTP 500s.
+      - name: Clear stale deploy files
+        run: |
+          set +e
+          . ./kudu.sh
+          cmd 'rmdir /s /q C:\local\Temp\zipdeploy'
+          # Remove truncated packages (under 1 MB) left by failed uploads
+          kudu "$SCM/api/vfs/data/SitePackages/" | jq -r '.[] | select(.mime != "inode/directory" and (.name | endswith(".zip")) and .size < 1048576) | .name' |
+            while read -r name; do
+              echo "Deleting truncated package $name"
+              kudu -X DELETE -H "If-Match: *" "$SCM/api/vfs/data/SitePackages/$name"
+            done
+          echo "== Local temp free space"
+          cmd 'dir C:\local\Temp | find "bytes free"'
 
       - name: 'Deploy to Azure Web App'
         uses: azure/webapps-deploy@v3
@@ -88,31 +124,18 @@ jobs:
           type: zip
           publish-profile: ${{ secrets.AZUREAPPSERVICE_PUBLISHPROFILE_A3BDF8ECB32A4920981340EDA5441374 }}
 
-      # The deploy action only reports "Internal Server Error"; pull Kudu's own log and disk state
+      # The deploy action only reports "Internal Server Error"; show Kudu's view instead
       - name: Kudu diagnostics on failure
         if: failure()
-        env:
-          PROFILE: ${{ secrets.AZUREAPPSERVICE_PUBLISHPROFILE_A3BDF8ECB32A4920981340EDA5441374 }}
         run: |
           set +e
-          attr() { echo "$PROFILE" | grep -o "$1=\"[^\"]*\"" | head -1 | cut -d'"' -f2; }
-          user=$(attr userName); pass=$(attr userPWD); host=$(attr publishUrl | cut -d: -f1)
-          echo "::add-mask::$pass"
-          scm="https://$host"
-          kudu() { curl -s -u "$user:$pass" "$@"; }
-          cmd() { kudu -H "Content-Type: application/json" -X POST "$scm/api/command" \
-                    -d "{\"command\":\"$1\",\"dir\":\"D:\\\\home\"}" | jq -r '.Output, .Error'; }
-
-          echo "== Deployment log"
-          kudu "$scm/api/deployments/latest/log" | jq -r '.[] | "\(.log_time)  \(.message)"' || true
-          for url in $(kudu "$scm/api/deployments/latest/log" | jq -r '.[].details_url // empty'); do
-            kudu "$url" | jq -r '.[] | "    \(.message)"' || true
-          done
-
-          echo "== App settings relevant to deploy"
-          kudu "$scm/api/settings" | jq -r 'to_entries[] | select(.key | test("RUN_FROM_PACKAGE|NODE_DEFAULT_VERSION|SCM_|WEBSITE_SKU")) | "\(.key)=\(.value)"' || true
-
-          echo "== Disk usage"
-          cmd "dir D:\\\\home\\\\data\\\\SitePackages"
-          cmd "dir /s D:\\\\home\\\\site\\\\wwwroot | find \\\"File(s)\\\""
-          cmd "dir /s D:\\\\home | find \\\"File(s)\\\""
+          . ./kudu.sh
+          echo "== Deployments"
+          kudu "$SCM/api/deployments" | jq -r '.[:3][] | "\(.received_time)  status=\(.status)  \(.status_text)  \(.message)"'
+          echo "== SitePackages"
+          kudu "$SCM/api/vfs/data/SitePackages/" | jq -r '.[] | "\(.size)	\(.name)"'
+          echo "== Local temp"
+          cmd 'dir C:\local\Temp'
+          cmd 'dir /s C:\local\Temp | find "File(s)"'
+          echo "== Home"
+          cmd 'dir /s D:\home | find "File(s)"'
