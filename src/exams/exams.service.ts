@@ -133,6 +133,7 @@ export class ExamsService {
       accessCode: exam.accessCode,
       title: exam.title,
       instructions: exam.instructions,
+      accessType: exam.accessType,
       durationMins: exam.durationMins,
       totalQuestions: exam._count.questions,
       totalMarks: exam.totalMarks,

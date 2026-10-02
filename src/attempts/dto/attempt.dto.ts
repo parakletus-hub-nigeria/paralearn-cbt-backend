@@ -1,4 +1,4 @@
-import { IsString, IsNotEmpty, IsOptional, IsObject, IsBoolean } from "class-validator";
+import { IsString, IsNotEmpty, IsOptional, IsObject, IsBoolean, IsEmail } from "class-validator";
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
 
 export class StartAttemptDto {
@@ -7,15 +7,29 @@ export class StartAttemptDto {
   @IsNotEmpty()
   accessCode!: string;
 
-  @ApiProperty({ description: "Candidate's unique 6-digit PIN or registration number", example: "849201" })
+  @ApiPropertyOptional({
+    description:
+      "Candidate PIN or registration number. Required for ROSTER_ONLY exams; walk-in participants may omit it and one is issued.",
+    example: "849201",
+  })
   @IsString()
-  @IsNotEmpty()
-  candidatePin!: string;
+  @IsOptional()
+  candidatePin?: string;
 
   @ApiProperty({ description: "Candidate full name", example: "Oluwaseun Adeleke" })
   @IsString()
   @IsNotEmpty()
   candidateName!: string;
+
+  @ApiPropertyOptional({ description: "Participant email address", example: "seun@example.com" })
+  @IsEmail()
+  @IsOptional()
+  email?: string;
+
+  @ApiPropertyOptional({ description: "Participant phone number", example: "+2348012345678" })
+  @IsString()
+  @IsOptional()
+  phone?: string;
 
   @ApiPropertyOptional({ description: "ParaLearn SIS student ID (if registered through school)", example: "stu_99381" })
   @IsString()

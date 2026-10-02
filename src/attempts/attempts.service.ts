@@ -49,7 +49,7 @@ export class AttemptsService {
    */
   async startAttempt(dto: StartAttemptDto) {
     const normalizedCode = dto.accessCode.trim().toUpperCase();
-    const pin = dto.candidatePin.trim().toUpperCase();
+    const providedPin = dto.candidatePin?.trim().toUpperCase() || "";
 
     // 1. Verify exam existence & publication status
     const exam = await this.prisma.exam.findUnique({
@@ -70,6 +70,13 @@ export class AttemptsService {
     if (!exam.isPublished) {
       throw new BadRequestException("This examination is not currently active or published.");
     }
+
+    if (exam.accessType === "ROSTER_ONLY" && !providedPin) {
+      throw new BadRequestException("This examination requires the access PIN issued by your examiner.");
+    }
+
+    // Walk-in participants without a PIN are issued one so they can resume later
+    const pin = providedPin || (await this.issueParticipantPin(exam.id));
 
     const rosterCandidate = await this.prisma.candidate.findUnique({
       where: {
@@ -160,6 +167,20 @@ export class AttemptsService {
         where: { id: rosterCandidate.id },
         data: { status: "STARTED" },
       });
+    } else {
+      // Walk-in participant: record their lobby details on the exam's participant list
+      await this.prisma.candidate.create({
+        data: {
+          examId: exam.id,
+          candidateName: dto.candidateName.trim(),
+          candidatePin: pin,
+          studentId: dto.studentId,
+          email: dto.email?.trim() || undefined,
+          phone: dto.phone?.trim() || undefined,
+          status: "STARTED",
+          metadata: { source: "WALK_IN" },
+        },
+      });
     }
 
     // 6. Initialize sub-millisecond Redis timer
@@ -183,6 +204,23 @@ export class AttemptsService {
       questions: sanitized,
       restoredAnswers: {},
     };
+  }
+
+  /**
+   * Generates a participant PIN that is unused for this exam
+   */
+  private async issueParticipantPin(examId: string): Promise<string> {
+    const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+    for (let tries = 0; tries < 10; tries++) {
+      let pin = "P";
+      for (let i = 0; i < 6; i++) pin += alphabet[Math.floor(Math.random() * alphabet.length)];
+      const [candidate, attempt] = await Promise.all([
+        this.prisma.candidate.findUnique({ where: { unique_exam_candidate: { examId, candidatePin: pin } } }),
+        this.prisma.examAttempt.findUnique({ where: { unique_exam_candidate_attempt: { examId, candidatePin: pin } } }),
+      ]);
+      if (!candidate && !attempt) return pin;
+    }
+    throw new BadRequestException("Unable to issue a participant PIN. Please try again.");
   }
 
   /**
