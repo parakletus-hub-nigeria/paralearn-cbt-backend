@@ -84,7 +84,6 @@ jobs:
           app-name: 'ParalearnCBT'
           slot-name: 'Production'
           package: release.zip
+          # WEBSITE_RUN_FROM_PACKAGE=1 mounts this zip read-only as wwwroot, so no `clean` here
           type: zip
-          # Remove files left in wwwroot by earlier full-repo deployments
-          clean: true
           publish-profile: ${{ secrets.AZUREAPPSERVICE_PUBLISHPROFILE_A3BDF8ECB32A4920981340EDA5441374 }}
