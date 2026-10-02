@@ -1,4 +1,4 @@
-import { IsString, IsNotEmpty, IsOptional, IsInt, IsBoolean, IsEnum, Min, Max } from "class-validator";
+import { IsString, IsNotEmpty, IsOptional, IsInt, IsBoolean, IsEnum, Min, Max, IsArray } from "class-validator";
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
 
 export enum AccessTypeEnum {
@@ -119,5 +119,7 @@ export class UpdateExamDto {
 
 export class AttachQuestionsDto {
   @ApiProperty({ description: "Array of question IDs to attach", type: [String] })
+  @IsArray()
+  @IsString({ each: true })
   questionIds!: string[];
 }
