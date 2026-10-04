@@ -1,4 +1,16 @@
-import { IsString, IsNotEmpty, IsOptional, IsObject, IsBoolean, IsEmail } from "class-validator";
+import { Type } from "class-transformer";
+import {
+  IsString,
+  IsNotEmpty,
+  IsOptional,
+  IsObject,
+  IsBoolean,
+  IsEmail,
+  IsArray,
+  ValidateNested,
+  IsNumber,
+  Min,
+} from "class-validator";
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
 
 export class StartAttemptDto {
@@ -84,4 +96,30 @@ export class SubmitAttemptDto {
   @IsObject()
   @IsOptional()
   finalAnswers?: Record<string, any>;
+}
+
+export class ManualGradeAnswerDto {
+  @ApiProperty({ description: "Question ID being manually graded" })
+  @IsString()
+  @IsNotEmpty()
+  questionId!: string;
+
+  @ApiProperty({ description: "Marks awarded by the examiner", example: 7 })
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  marksAwarded!: number;
+
+  @ApiPropertyOptional({ description: "Optional examiner feedback or rubric notes" })
+  @IsString()
+  @IsOptional()
+  feedback?: string;
+}
+
+export class ManualGradeAttemptDto {
+  @ApiProperty({ description: "Per-question manual grade updates", type: [ManualGradeAnswerDto] })
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => ManualGradeAnswerDto)
+  answers!: ManualGradeAnswerDto[];
 }

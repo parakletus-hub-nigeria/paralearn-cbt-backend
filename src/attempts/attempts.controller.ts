@@ -6,6 +6,7 @@ import {
   BufferAnswerDto,
   RecordTelemetryDto,
   SubmitAttemptDto,
+  ManualGradeAttemptDto,
 } from "./dto/attempt.dto";
 
 @ApiTags("Attempts")
@@ -41,5 +42,17 @@ export class AttemptsController {
   @ApiOperation({ summary: "Get candidate result slip" })
   getResultSlip(@Param("id") attemptId: string) {
     return this.attemptsService.getCandidateResultSlip(attemptId);
+  }
+
+  @Get(":id/review")
+  @ApiOperation({ summary: "Get submitted attempt answers and question metadata for examiner review" })
+  getReviewPayload(@Param("id") attemptId: string) {
+    return this.attemptsService.getAttemptReviewPayload(attemptId);
+  }
+
+  @Post(":id/manual-grade")
+  @ApiOperation({ summary: "Apply examiner manual marks and recalculate final score" })
+  manualGradeAttempt(@Param("id") attemptId: string, @Body() dto: ManualGradeAttemptDto) {
+    return this.attemptsService.manualGradeAttempt(attemptId, dto);
   }
 }

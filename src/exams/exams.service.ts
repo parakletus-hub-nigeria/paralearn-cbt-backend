@@ -61,6 +61,7 @@ export class ExamsService {
         shuffleQuestions: dto.shuffleQuestions ?? true,
         shuffleChoices: dto.shuffleChoices ?? true,
         showResultAfter: dto.showResultAfter ?? true,
+        isPublished: dto.isPublished ?? false,
         startsAt: dto.startsAt ? new Date(dto.startsAt) : null,
         endsAt: dto.endsAt ? new Date(dto.endsAt) : null,
       },
@@ -226,10 +227,15 @@ export class ExamsService {
             violations: true,
             startedAt: true,
             submittedAt: true,
+            deadline: true,
             score: true,
+            totalMarks: true,
             percentage: true,
             grade: true,
             ipAddress: true,
+            _count: {
+              select: { answers: true },
+            },
           },
           orderBy: { startedAt: "desc" },
         },
@@ -266,6 +272,69 @@ export class ExamsService {
       ? Math.round(submittedScores.reduce((sum, val) => sum + val, 0) / submittedScores.length)
       : 0;
 
+    const attemptsByPin = new Map(exam.attempts.map((attempt) => [attempt.candidatePin, attempt]));
+    const rosterPins = new Set(exam.candidates.map((candidate) => candidate.candidatePin));
+    const rosterParticipants = exam.candidates.map((candidate) => {
+      const attempt = attemptsByPin.get(candidate.candidatePin);
+      return {
+        id: attempt?.id ?? candidate.id,
+        candidateId: candidate.id,
+        attemptId: attempt?.id ?? null,
+        candidateName: attempt?.candidateName ?? candidate.candidateName,
+        candidatePin: candidate.candidatePin,
+        studentId: attempt?.studentId ?? candidate.studentId,
+        email: candidate.email,
+        phone: candidate.phone,
+        rosterStatus: candidate.status,
+        attemptStatus: attempt?.status ?? "NOT_STARTED",
+        violations: attempt?.violations ?? 0,
+        answeredCount: attempt?._count.answers ?? 0,
+        totalQuestions: exam._count.questions,
+        deadline: attempt?.deadline ?? null,
+        startedAt: attempt?.startedAt ?? null,
+        submittedAt: attempt?.submittedAt ?? null,
+        score: attempt?.score ?? null,
+        totalMarks: attempt?.totalMarks ?? exam.totalMarks,
+        percentage: attempt?.percentage ?? null,
+        grade: attempt?.grade ?? null,
+        ipAddress: attempt?.ipAddress ?? null,
+        createdAt: candidate.createdAt,
+      };
+    });
+
+    const walkInParticipants = exam.attempts
+      .filter((attempt) => !rosterPins.has(attempt.candidatePin))
+      .map((attempt) => ({
+        id: attempt.id,
+        candidateId: null,
+        attemptId: attempt.id,
+        candidateName: attempt.candidateName,
+        candidatePin: attempt.candidatePin,
+        studentId: attempt.studentId,
+        email: null,
+        phone: null,
+        rosterStatus: null,
+        attemptStatus: attempt.status,
+        violations: attempt.violations,
+        answeredCount: attempt._count.answers,
+        totalQuestions: exam._count.questions,
+        deadline: attempt.deadline,
+        startedAt: attempt.startedAt,
+        submittedAt: attempt.submittedAt,
+        score: attempt.score,
+        totalMarks: attempt.totalMarks ?? exam.totalMarks,
+        percentage: attempt.percentage,
+        grade: attempt.grade,
+        ipAddress: attempt.ipAddress,
+        createdAt: attempt.startedAt,
+      }));
+
+    const participants = [...rosterParticipants, ...walkInParticipants].sort((a, b) => {
+      const aTime = new Date(a.startedAt ?? a.createdAt).getTime();
+      const bTime = new Date(b.startedAt ?? b.createdAt).getTime();
+      return bTime - aTime;
+    });
+
     return {
       exam: {
         id: exam.id,
@@ -288,6 +357,7 @@ export class ExamsService {
       },
       roster: exam.candidates,
       candidates: exam.attempts,
+      participants,
     };
   }
 }

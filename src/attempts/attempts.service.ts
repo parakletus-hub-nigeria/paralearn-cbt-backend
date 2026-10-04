@@ -12,6 +12,7 @@ import {
   BufferAnswerDto,
   RecordTelemetryDto,
   SubmitAttemptDto,
+  ManualGradeAttemptDto,
 } from "./dto/attempt.dto";
 import * as crypto from "crypto";
 
@@ -355,9 +356,9 @@ export class AttemptsService {
     }
 
     // 1. Gather all candidate answers: merge Redis buffer with client fallback
-    const buffered = await this.redis.getBufferedAnswers(attemptId);
+    const buffered = await this.redis.getBufferedAnswers(attemptId).catch(() => ({}));
     const allAnswers: Record<string, any> = { ...buffered, ...(dto.finalAnswers || {}) };
-    const violations = await this.redis.getViolations(attemptId);
+    const violations = await this.redis.getViolations(attemptId).catch(() => attempt.violations || 0);
 
     // 2. Deterministic Grading
     let totalMarks = 0;
@@ -372,7 +373,12 @@ export class AttemptsService {
       let isCorrect = false;
       let marksAwarded = 0;
 
-      if (candidateSubmission) {
+      const hasSubmission =
+        candidateSubmission !== undefined &&
+        candidateSubmission !== null &&
+        !(typeof candidateSubmission === "string" && candidateSubmission.trim() === "");
+
+      if (hasSubmission) {
         let chosenOptId: string | null = null;
         if (typeof candidateSubmission === "string") {
           chosenOptId = candidateSubmission;
@@ -415,7 +421,7 @@ export class AttemptsService {
       answerRecordsToCreate.push({
         attemptId: attempt.id,
         questionId: q.id,
-        selectedVal: candidateSubmission ? { selected: candidateSubmission } : {},
+        selectedVal: hasSubmission ? this.toJsonSafeValue({ selected: candidateSubmission }) : {},
         isCorrect,
         marksAwarded,
       });
@@ -425,27 +431,20 @@ export class AttemptsService {
     const grade = this.calculateGrade(percentage);
 
     // 3. Atomic Database Commit
-    await this.prisma.$transaction(async (tx) => {
-      // Upsert answers
-      for (const ans of answerRecordsToCreate) {
-        await tx.attemptAnswer.upsert({
-          where: {
-            attemptId_questionId: {
-              attemptId: ans.attemptId,
-              questionId: ans.questionId,
-            },
-          },
-          update: {
-            selectedVal: ans.selectedVal,
-            isCorrect: ans.isCorrect,
-            marksAwarded: ans.marksAwarded,
-          },
-          create: ans,
-        });
-      }
-
-      // Update attempt status
-      await tx.examAttempt.update({
+    // Use a batch transaction instead of a long interactive loop so Prisma does not
+    // close the transaction while many answers are being upserted.
+    await this.prisma.$transaction([
+      this.prisma.attemptAnswer.deleteMany({
+        where: { attemptId: attempt.id },
+      }),
+      ...(answerRecordsToCreate.length > 0
+        ? [
+            this.prisma.attemptAnswer.createMany({
+              data: answerRecordsToCreate,
+            }),
+          ]
+        : []),
+      this.prisma.examAttempt.update({
         where: { id: attemptId },
         data: {
           status: "SUBMITTED",
@@ -456,16 +455,15 @@ export class AttemptsService {
           grade,
           violations,
         },
-      });
-
-      await tx.candidate.updateMany({
+      }),
+      this.prisma.candidate.updateMany({
         where: {
           examId: attempt.examId,
           candidatePin: attempt.candidatePin,
         },
         data: { status: "SUBMITTED" },
-      });
-    });
+      }),
+    ]);
 
     const resultSlip = await this.getCandidateResultSlip(attemptId);
 
@@ -488,6 +486,162 @@ export class AttemptsService {
     }
 
     return resultSlip;
+  }
+
+  private toJsonSafeValue(value: any): any {
+    if (value === undefined) return null;
+    if (value === null) return null;
+    if (Array.isArray(value)) return value.map((item) => this.toJsonSafeValue(item));
+    if (typeof value === "object") {
+      return Object.fromEntries(
+        Object.entries(value).map(([key, entry]) => [key, this.toJsonSafeValue(entry)])
+      );
+    }
+    return value;
+  }
+
+  async getAttemptReviewPayload(attemptId: string) {
+    const attempt = await this.prisma.examAttempt.findUnique({
+      where: { id: attemptId },
+      include: {
+        answers: true,
+        exam: {
+          include: {
+            workspace: { select: { name: true } },
+            questions: {
+              orderBy: { orderIndex: "asc" },
+              include: { question: true },
+            },
+          },
+        },
+      },
+    });
+
+    if (!attempt) throw new NotFoundException(`Attempt ${attemptId} not found.`);
+
+    const answersByQuestion = new Map(attempt.answers.map((answer) => [answer.questionId, answer]));
+    const questions = attempt.exam.questions.map((link) => {
+      const answer = answersByQuestion.get(link.questionId);
+      const selectedPayload = answer?.selectedVal as any;
+      return {
+        id: link.question.id,
+        prompt: link.question.prompt,
+        type: link.question.type,
+        marks: link.question.marks,
+        options: link.question.options,
+        explanation: link.question.explanation,
+        orderIndex: link.orderIndex,
+        answer: selectedPayload?.selected ?? selectedPayload ?? null,
+        marksAwarded: answer?.marksAwarded ?? 0,
+        isCorrect: answer?.isCorrect ?? null,
+      };
+    });
+
+    return {
+      attemptId: attempt.id,
+      examId: attempt.examId,
+      examTitle: attempt.exam.title,
+      accessCode: attempt.exam.accessCode,
+      institutionName: attempt.exam.workspace.name,
+      candidateName: attempt.candidateName,
+      candidatePin: attempt.candidatePin,
+      studentId: attempt.studentId,
+      status: attempt.status,
+      score: attempt.score ?? 0,
+      totalMarks: attempt.totalMarks ?? attempt.exam.totalMarks,
+      percentage: attempt.percentage ?? 0,
+      grade: attempt.grade ?? "F9",
+      violations: attempt.violations,
+      submittedAt: attempt.submittedAt,
+      questions,
+    };
+  }
+
+  async manualGradeAttempt(attemptId: string, dto: ManualGradeAttemptDto) {
+    const attempt = await this.prisma.examAttempt.findUnique({
+      where: { id: attemptId },
+      include: {
+        exam: {
+          include: {
+            questions: {
+              include: { question: true },
+            },
+          },
+        },
+        answers: true,
+      },
+    });
+
+    if (!attempt) throw new NotFoundException(`Attempt ${attemptId} not found.`);
+
+    const questionMarks = new Map(
+      attempt.exam.questions.map((link) => [link.questionId, link.question.marks])
+    );
+
+    const invalidQuestion = dto.answers.find((answer) => !questionMarks.has(answer.questionId));
+    if (invalidQuestion) {
+      throw new BadRequestException(`Question ${invalidQuestion.questionId} does not belong to this attempt.`);
+    }
+
+    const existingAnswers = new Map(attempt.answers.map((answer) => [answer.questionId, answer]));
+    const gradeOperations = dto.answers.map((answer) => {
+      const maxMarks = questionMarks.get(answer.questionId) ?? 0;
+      const marksAwarded = Math.min(Math.max(answer.marksAwarded, 0), maxMarks);
+      const existing = existingAnswers.get(answer.questionId);
+      const selectedVal = this.toJsonSafeValue({
+        ...(typeof existing?.selectedVal === "object" && existing?.selectedVal !== null
+          ? (existing.selectedVal as Record<string, any>)
+          : { selected: existing?.selectedVal ?? "" }),
+        feedback: answer.feedback ?? undefined,
+      });
+
+      return this.prisma.attemptAnswer.upsert({
+        where: {
+          attemptId_questionId: {
+            attemptId,
+            questionId: answer.questionId,
+          },
+        },
+        create: {
+          attemptId,
+          questionId: answer.questionId,
+          selectedVal,
+          isCorrect: marksAwarded >= maxMarks && maxMarks > 0,
+          marksAwarded,
+        },
+        update: {
+          selectedVal,
+          isCorrect: marksAwarded >= maxMarks && maxMarks > 0,
+          marksAwarded,
+        },
+      });
+    });
+
+    await this.prisma.$transaction(gradeOperations);
+
+    const refreshedAnswers = await this.prisma.attemptAnswer.findMany({
+      where: { attemptId },
+      select: { marksAwarded: true },
+    });
+
+    const totalMarks = attempt.exam.totalMarks;
+    const score = refreshedAnswers.reduce((sum, answer) => sum + (answer.marksAwarded ?? 0), 0);
+    const percentage = totalMarks > 0 ? Math.round((score / totalMarks) * 100) : 0;
+    const grade = this.calculateGrade(percentage);
+
+    await this.prisma.examAttempt.update({
+      where: { id: attemptId },
+      data: {
+        score,
+        totalMarks,
+        percentage,
+        grade,
+        status: "SUBMITTED",
+        submittedAt: attempt.submittedAt ?? new Date(),
+      },
+    });
+
+    return this.getAttemptReviewPayload(attemptId);
   }
 
   private async dispatchWebhook(workspace: any, payload: any) {

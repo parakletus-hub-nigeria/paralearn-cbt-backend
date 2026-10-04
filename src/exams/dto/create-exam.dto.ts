@@ -62,6 +62,11 @@ export class CreateExamDto {
   @IsOptional()
   showResultAfter?: boolean;
 
+  @ApiPropertyOptional({ description: "Whether candidates can enter the exam room with the access code", default: false })
+  @IsBoolean()
+  @IsOptional()
+  isPublished?: boolean;
+
   @ApiPropertyOptional({ description: "Scheduled start ISO timestamp" })
   @IsOptional()
   startsAt?: string;
