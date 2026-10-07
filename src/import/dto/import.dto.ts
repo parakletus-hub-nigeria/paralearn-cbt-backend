@@ -35,6 +35,14 @@ export class ImportCandidatesFromParalearnDto {
   @IsNotEmpty()
   examId!: string;
 
+  @ApiPropertyOptional({
+    description:
+      "Exam title, used only if the exam has to be auto-provisioned in the CBT database",
+  })
+  @IsString()
+  @IsOptional()
+  examTitle?: string;
+
   @ApiProperty({
     description: "Admin/Teacher email registered in ParaLearn Core",
   })

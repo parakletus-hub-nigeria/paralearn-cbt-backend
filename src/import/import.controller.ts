@@ -47,6 +47,7 @@ export class ImportController {
     return this.importService.importCandidatesFromParalearn({
       workspaceId: dto.workspaceId,
       examId: dto.examId,
+      examTitle: dto.examTitle,
       email: dto.email,
       classIds: dto.classIds,
       autoGeneratePin: dto.autoGeneratePin,

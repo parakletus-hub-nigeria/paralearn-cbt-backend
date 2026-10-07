@@ -7,6 +7,7 @@ import {
   InternalServerErrorException,
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
+import { Prisma } from "@prisma/client";
 import { PrismaService } from "@/prisma/prisma.service";
 
 /** Shape returned by ParaLearn Core POST /non-tenant/cbt-import/classes */
@@ -181,6 +182,7 @@ export class ImportService {
   async importCandidatesFromParalearn(params: {
     workspaceId: string;
     examId: string;
+    examTitle?: string;
     email: string;
     classIds: string[];
     autoGeneratePin?: boolean;
@@ -188,6 +190,7 @@ export class ImportService {
     const {
       workspaceId,
       examId,
+      examTitle,
       email,
       classIds,
       autoGeneratePin = true,
@@ -202,23 +205,25 @@ export class ImportService {
     });
 
     if (!exam) {
-      const rawCode = `EXAM-${examId.slice(-6).toUpperCase().replace(/[^A-Z0-9]/g, "9")}`;
-      const existingWithCode = await this.prisma.exam.findUnique({
-        where: { accessCode: rawCode },
-      });
-      const accessCode = existingWithCode
-        ? `EXAM-${Math.floor(100000 + Math.random() * 900000)}`
-        : rawCode;
+      let accessCode = `EXAM-${examId.slice(-6).toUpperCase().replace(/[^A-Z0-9]/g, "9")}`;
+      for (let attempts = 0; attempts < 5; attempts++) {
+        const existingWithCode = await this.prisma.exam.findUnique({
+          where: { accessCode },
+        });
+        if (!existingWithCode) break;
+        accessCode = `EXAM-${Math.floor(100000 + Math.random() * 900000)}`;
+      }
 
       exam = await this.prisma.exam.create({
         data: {
           id: examId,
           workspaceId,
-          title: "ParaLearn Assessment",
+          title: examTitle?.trim() || "ParaLearn Assessment",
           accessCode,
           durationMins: 60,
           totalMarks: 100,
-          isPublished: true,
+          // Placeholder record with no questions yet — keep it closed to candidates
+          isPublished: false,
         },
       });
       this.logger.log(
@@ -229,6 +234,22 @@ export class ImportService {
         "This exam does not belong to the specified workspace.",
       );
     }
+
+    // Existing roster is needed to prevent duplicates on re-import — load it while Core responds
+    const existingCandidatesPromise = this.prisma.candidate.findMany({
+      where: { examId },
+      select: {
+        id: true,
+        candidateName: true,
+        candidatePin: true,
+        studentId: true,
+        email: true,
+        phone: true,
+        metadata: true,
+      },
+    });
+    // Avoid an unhandled rejection if the Core call below throws first
+    existingCandidatesPromise.catch(() => undefined);
 
     // 3. Fetch students from Core
     const { coreApiUrl, serviceSecret } = this.getCoreConfig();
@@ -287,16 +308,8 @@ export class ImportService {
       };
     }
 
-    // 4. Query existing candidates for this exam to prevent duplicate entries on re-import
-    const existingCandidates = await this.prisma.candidate.findMany({
-      where: { examId },
-      select: {
-        id: true,
-        candidatePin: true,
-        studentId: true,
-        email: true,
-      },
-    });
+    // 4. Match against existing candidates to prevent duplicate entries on re-import
+    const existingCandidates = await existingCandidatesPromise;
 
     const usedPins = new Set(existingCandidates.map((c) => c.candidatePin));
     const existingByStudentId = new Map<
@@ -307,13 +320,18 @@ export class ImportService {
 
     for (const c of existingCandidates) {
       if (c.studentId) existingByStudentId.set(c.studentId, c);
-      if (c.email) existingByEmail.set(c.email.toLowerCase(), c);
+      // Email fallback only for manually-added candidates — siblings can share a parent's email
+      if (c.email && !c.studentId) existingByEmail.set(c.email.toLowerCase(), c);
     }
 
     let newlyCreatedCount = 0;
     let updatedCount = 0;
+    const toCreate: Prisma.CandidateCreateManyInput[] = [];
+    const toUpdate: Array<{ id: string; data: Prisma.CandidateUpdateInput }> =
+      [];
+    const importedPins: string[] = [];
 
-    const candidateData = coreData.students.map((student) => {
+    for (const student of coreData.students) {
       const cleanEmail = student.email?.toLowerCase() || null;
       const existing =
         (student.studentId && existingByStudentId.get(student.studentId)) ||
@@ -341,10 +359,9 @@ export class ImportService {
         usedPins.add(pin);
       }
 
-      return {
-        examId,
+      importedPins.push(pin);
+      const fields = {
         candidateName: student.fullName,
-        candidatePin: pin,
         studentId: student.studentId, // ParaLearn Core User.id — enables score sync
         email: cleanEmail,
         phone: student.phone || null,
@@ -357,29 +374,41 @@ export class ImportService {
           importedAt: new Date().toISOString(),
         },
       };
-    });
 
-    // 5. Bulk upsert via transaction
-    const candidates = await this.prisma.$transaction(
-      candidateData.map((candidate) =>
-        this.prisma.candidate.upsert({
-          where: {
-            unique_exam_candidate: {
-              examId: candidate.examId,
-              candidatePin: candidate.candidatePin,
-            },
-          },
-          update: {
-            candidateName: candidate.candidateName,
-            studentId: candidate.studentId,
-            email: candidate.email,
-            phone: candidate.phone,
-            metadata: candidate.metadata,
-          },
-          create: candidate,
-        }),
-      ),
-    );
+      if (!existing) {
+        toCreate.push({ examId, candidatePin: pin, ...fields });
+      } else if (
+        existing.candidateName !== fields.candidateName ||
+        existing.studentId !== fields.studentId ||
+        existing.email !== fields.email ||
+        existing.phone !== fields.phone ||
+        (existing.metadata as { classId?: string } | null)?.classId !==
+          student.classId
+      ) {
+        // Only rewrite rows whose details changed — each write is a DB round trip
+        toUpdate.push({ id: existing.id, data: fields });
+      }
+    }
+
+    // 5. One bulk insert for new candidates, individual updates only for changed ones
+    if (toCreate.length > 0) {
+      await this.prisma.candidate.createMany({
+        data: toCreate,
+        skipDuplicates: true,
+      });
+    }
+    if (toUpdate.length > 0) {
+      await this.prisma.$transaction(
+        toUpdate.map(({ id, data }) =>
+          this.prisma.candidate.update({ where: { id }, data }),
+        ),
+      );
+    }
+
+    const candidates = await this.prisma.candidate.findMany({
+      where: { examId, candidatePin: { in: importedPins } },
+      orderBy: { candidateName: "asc" },
+    });
 
     this.logger.log(
       `Imported ${candidates.length} candidates (${newlyCreatedCount} new, ${updatedCount} updated) ` +
