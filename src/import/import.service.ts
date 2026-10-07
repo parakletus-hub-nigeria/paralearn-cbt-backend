@@ -196,16 +196,35 @@ export class ImportService {
     // 1. Validate workspace
     const { schoolId } = await this.resolveInstitutionWorkspace(workspaceId);
 
-    // 2. Validate exam belongs to this workspace
-    const exam = await this.prisma.exam.findUnique({
+    // 2. Validate exam belongs to this workspace (auto-provision if not yet in CBT DB)
+    let exam = await this.prisma.exam.findUnique({
       where: { id: examId },
     });
 
     if (!exam) {
-      throw new NotFoundException(`Exam "${examId}" not found.`);
-    }
+      const rawCode = `EXAM-${examId.slice(-6).toUpperCase().replace(/[^A-Z0-9]/g, "9")}`;
+      const existingWithCode = await this.prisma.exam.findUnique({
+        where: { accessCode: rawCode },
+      });
+      const accessCode = existingWithCode
+        ? `EXAM-${Math.floor(100000 + Math.random() * 900000)}`
+        : rawCode;
 
-    if (exam.workspaceId !== workspaceId) {
+      exam = await this.prisma.exam.create({
+        data: {
+          id: examId,
+          workspaceId,
+          title: "ParaLearn Assessment",
+          accessCode,
+          durationMins: 60,
+          totalMarks: 100,
+          isPublished: true,
+        },
+      });
+      this.logger.log(
+        `Auto-provisioned exam "${examId}" (code: ${accessCode}) for workspace "${workspaceId}".`,
+      );
+    } else if (exam.workspaceId !== workspaceId) {
       throw new ForbiddenException(
         "This exam does not belong to the specified workspace.",
       );
@@ -382,6 +401,10 @@ export class ImportService {
         candidatePin: c.candidatePin,
         studentId: c.studentId,
         email: c.email,
+        phone: c.phone,
+        status: c.status,
+        metadata: c.metadata,
+        createdAt: c.createdAt,
       })),
     };
   }
