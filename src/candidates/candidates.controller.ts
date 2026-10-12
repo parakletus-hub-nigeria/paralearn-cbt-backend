@@ -2,21 +2,29 @@ import { Body, Controller, Delete, Get, Param, Post, Query } from "@nestjs/commo
 import { ApiOperation, ApiQuery, ApiTags } from "@nestjs/swagger";
 import { CandidatesService } from "./candidates.service";
 import { BulkUpsertCandidatesDto, UpsertCandidateDto } from "./dto/candidate.dto";
+import { Public } from "../access/public.decorator";
+import { Caller, type CbtCaller } from "../access/caller.decorator";
+import { CbtAccessService } from "../access/cbt-access.service";
 
 @ApiTags("Candidates")
 @Controller("candidates")
 export class CandidatesController {
-  constructor(private readonly candidatesService: CandidatesService) {}
+  constructor(
+    private readonly candidatesService: CandidatesService,
+    private readonly access: CbtAccessService,
+  ) {}
 
   @Post()
   @ApiOperation({ summary: "Create or update one candidate on an exam roster" })
-  upsertCandidate(@Body() dto: UpsertCandidateDto) {
+  async upsertCandidate(@Body() dto: UpsertCandidateDto, @Caller() caller: CbtCaller) {
+    await this.access.assertExam(caller, dto.examId);
     return this.candidatesService.upsertCandidate(dto);
   }
 
   @Post("bulk")
   @ApiOperation({ summary: "Bulk create or update candidate roster entries" })
-  bulkUpsert(@Body() dto: BulkUpsertCandidatesDto) {
+  async bulkUpsert(@Body() dto: BulkUpsertCandidatesDto, @Caller() caller: CbtCaller) {
+    await this.access.assertExam(caller, dto.examId);
     return this.candidatesService.bulkUpsertCandidates(dto);
   }
 
@@ -24,19 +32,26 @@ export class CandidatesController {
   @ApiOperation({ summary: "List candidate roster entries for an exam" })
   @ApiQuery({ name: "examId", required: true, type: String })
   @ApiQuery({ name: "search", required: false, type: String })
-  listCandidates(@Query("examId") examId: string, @Query("search") search?: string) {
+  async listCandidates(
+    @Query("examId") examId: string,
+    @Caller() caller: CbtCaller,
+    @Query("search") search?: string
+  ) {
+    if (caller.kind === "workspace" || examId) await this.access.assertExam(caller, examId);
     return this.candidatesService.listExamCandidates(examId, search);
   }
 
   @Get(":id")
   @ApiOperation({ summary: "Get candidate roster entry" })
-  getCandidate(@Param("id") id: string) {
+  async getCandidate(@Param("id") id: string, @Caller() caller: CbtCaller) {
+    await this.access.assertCandidate(caller, id);
     return this.candidatesService.getCandidateById(id);
   }
 
   @Delete(":id")
   @ApiOperation({ summary: "Remove candidate from an exam roster" })
-  deleteCandidate(@Param("id") id: string) {
+  async deleteCandidate(@Param("id") id: string, @Caller() caller: CbtCaller) {
+    await this.access.assertCandidate(caller, id);
     return this.candidatesService.deleteCandidate(id);
   }
 }

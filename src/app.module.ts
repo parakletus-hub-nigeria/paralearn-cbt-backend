@@ -9,6 +9,7 @@ import { AttemptsModule } from "./attempts/attempts.module";
 import { SyncModule } from "./sync/sync.module";
 import { CandidatesModule } from "./candidates/candidates.module";
 import { ImportModule } from "./import/import.module";
+import { AccessModule } from "./access/access.module";
 
 @Module({
   imports: [
@@ -17,6 +18,7 @@ import { ImportModule } from "./import/import.module";
       envFilePath: [".env", ".env.local"],
     }),
     PrismaModule,
+    AccessModule,
     RedisModule,
     WorkspacesModule,
     ExamsModule,

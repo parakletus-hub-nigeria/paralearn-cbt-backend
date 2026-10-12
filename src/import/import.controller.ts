@@ -5,11 +5,17 @@ import {
   FetchImportableClassesDto,
   ImportCandidatesFromParalearnDto,
 } from "./dto/import.dto";
+import { Public } from "../access/public.decorator";
+import { Caller, type CbtCaller } from "../access/caller.decorator";
+import { CbtAccessService } from "../access/cbt-access.service";
 
 @ApiTags("ParaLearn Import")
 @Controller("import")
 export class ImportController {
-  constructor(private readonly importService: ImportService) {}
+  constructor(
+    private readonly importService: ImportService,
+    private readonly access: CbtAccessService,
+  ) {}
 
   /**
    * Step 1: Admin clicks "Import from ParaLearn" →
@@ -23,9 +29,9 @@ export class ImportController {
       "the classes they have access to. Admins see all classes, " +
       "teachers see only their assigned classes.",
   })
-  fetchImportableClasses(@Body() dto: FetchImportableClassesDto) {
+  fetchImportableClasses(@Body() dto: FetchImportableClassesDto, @Caller() caller: CbtCaller) {
     return this.importService.fetchImportableClasses(
-      dto.workspaceId,
+      this.access.workspaceFor(caller, dto.workspaceId),
       dto.email,
     );
   }
@@ -43,9 +49,11 @@ export class ImportController {
       "auto-generates unique 6-digit PINs, and creates Candidate records " +
       "on the specified exam. Maps studentId for automatic score export.",
   })
-  importCandidates(@Body() dto: ImportCandidatesFromParalearnDto) {
+  async importCandidates(@Body() dto: ImportCandidatesFromParalearnDto, @Caller() caller: CbtCaller) {
+    const workspaceId = this.access.workspaceFor(caller, dto.workspaceId);
+    await this.access.assertExam(caller, dto.examId);
     return this.importService.importCandidatesFromParalearn({
-      workspaceId: dto.workspaceId,
+      workspaceId,
       examId: dto.examId,
       examTitle: dto.examTitle,
       email: dto.email,
