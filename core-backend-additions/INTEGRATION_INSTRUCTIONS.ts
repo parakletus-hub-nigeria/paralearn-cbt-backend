@@ -28,8 +28,8 @@
  *       No changes needed.
  *
  *  5. Add CBT_SERVICE_SECRET to your .env if not already present:
- *       CBT_SERVICE_SECRET="pln_cbt_internal_secret_2026"
- *       (Must match the same value in the CBT microservice's .env)
+ *       CBT_SERVICE_SECRET="<generate with: openssl rand -hex 32>"
+ *       (Must match the CBT microservice and the web app; there is no default)
  *
  *  New Endpoints:
  *    POST /non-tenant/cbt-import/classes

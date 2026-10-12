@@ -5,6 +5,7 @@ import {
   ForbiddenException,
   Logger,
   InternalServerErrorException,
+  ServiceUnavailableException,
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { Prisma } from "@prisma/client";
@@ -58,10 +59,12 @@ export class ImportService {
       "PARALEARN_CORE_API_URL",
       "http://localhost:3000/api",
     );
-    const serviceSecret = this.config.get<string>(
-      "CBT_SERVICE_SECRET",
-      "pln_cbt_internal_secret_2026",
-    );
+    const serviceSecret = this.config.get<string>("CBT_SERVICE_SECRET")?.trim();
+    if (!serviceSecret) {
+      throw new ServiceUnavailableException(
+        "The ParaLearn integration is not configured (CBT_SERVICE_SECRET is not set).",
+      );
+    }
     return { coreApiUrl, serviceSecret };
   }
 

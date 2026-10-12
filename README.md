@@ -79,7 +79,8 @@ CBT_DATABASE_URL="postgresql://user:password@localhost:5432/paralearn_cbt?schema
 REDIS_HOST="localhost"
 REDIS_PORT=6379
 PARALEARN_CORE_API_URL="http://localhost:3000/api"
-CBT_SERVICE_SECRET="pln_cbt_internal_secret_2026"
+# Long random value, identical in this service, ParaLearn Core and the web app (paralearn-rms-web)
+CBT_SERVICE_SECRET="<generate with: openssl rand -hex 32>"
 ```
 
 ### 2. Install & Generate Database Client

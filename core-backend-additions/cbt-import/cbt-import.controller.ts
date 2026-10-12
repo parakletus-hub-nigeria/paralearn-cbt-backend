@@ -4,6 +4,7 @@ import {
   Body,
   Headers,
   UnauthorizedException,
+  ServiceUnavailableException,
   Logger,
   BadRequestException,
 } from "@nestjs/common";
@@ -28,8 +29,11 @@ export class CbtImportController {
    * This replaces JWT auth for machine-to-machine calls.
    */
   private validateServiceKey(serviceKey: string | undefined): void {
-    const expected =
-      process.env.CBT_SERVICE_SECRET || "pln_cbt_internal_secret_2026";
+    const expected = process.env.CBT_SERVICE_SECRET?.trim();
+    if (!expected) {
+      this.logger.error("CBT_SERVICE_SECRET is not set; refusing CBT service calls.");
+      throw new ServiceUnavailableException("The CBT integration is not configured.");
+    }
     if (!serviceKey) {
       throw new UnauthorizedException("Invalid or missing CBT service key.");
     }

@@ -88,13 +88,24 @@ Every request from an external application must authenticate using an API key is
 > [!CAUTION]
 > Keep your secret API key (`pln_live_sk_...`) confidential. Never expose it in client-side code, mobile application bundles, or public repositories.
 
+### What a key can reach
+- A key only reaches its own workspace. Naming another workspace returns `403`; another workspace's exams, questions, candidates or attempts return `404`.
+- Requests without a valid key return `401`.
+- Candidate-facing endpoints need no key, so candidates can sit exams from the hosted portal or your own UI:
+  - `GET /exams/code/:accessCode`
+  - `POST /attempts/start`, `POST /attempts/:id/answer`, `POST /attempts/:id/telemetry`, `POST /attempts/:id/submit`
+  - `GET /attempts/:id/slip`
+
+### Getting a key
+Create a free exam hall at [https://cbt.pln.ng/cbt/auth](https://cbt.pln.ng/cbt/auth) (schools sign in there with their ParaLearn account), then request API access from `dev@pln.ng`, naming your workspace.
+
 ---
 
 ## 3. Quickstart Workflow (End-to-End)
 
 To create and run an exam programmatically:
 
-1. **Create Workspace & Get API Key:** Call `POST /workspaces/standalone`. You receive an API key and **30 free candidate credits**.
+1. **Get an API Key:** Create an exam hall at `https://cbt.pln.ng/cbt/auth` and request API access (see [Getting a key](#getting-a-key)).
 2. **Create Exam:** Call `POST /exams` with title, duration, and room access code.
 3. **Upload Questions:** Call `POST /questions/bulk` or `POST /questions/import-excel`.
 4. **Attach Questions:** Call `POST /exams/:id/questions`.
@@ -108,95 +119,17 @@ To create and run an exam programmatically:
 
 ### A. Workspaces & Developer Keys
 
-#### 1. Register Workspace (Get API Key)
-`POST /workspaces/standalone`
+Workspaces are created in the CBT app, not through this API:
 
-Creates an autonomous exam hall workspace, allocates 30 free test credits, and returns your developer credentials.
+- **Independent exam halls** sign up at `https://cbt.pln.ng/cbt/auth` with an email and password.
+- **Schools** sign in there with a ParaLearn staff account (admin, principal, vice principal or teacher). Their school's workspace is created on first sign-in and is linked to ParaLearn, so students can be imported by class.
 
-**Request Body:**
-```json
-{
-  "name": "Standard Assessment Centre",
-  "ownerName": "Centre Administrator",
-  "email": "examiner@example.com",
-  "webhookUrl": "https://api.example.com/webhooks/cbt-results"
-}
-```
+`POST /workspaces/standalone` and `POST /workspaces/institution` are internal to ParaLearn and reject API keys. `POST /workspaces/login` has been retired and returns `410 Gone`.
 
-**Response (201 Created):**
-```json
-{
-  "id": "ws_sample_0001",
-  "name": "Standard Assessment Centre",
-  "type": "STANDALONE_HALL",
-  "ownerName": "Centre Administrator",
-  "ownerEmail": "examiner@example.com",
-  "credits": 30,
-  "apiKey": "pln_live_sk_sample_••••••••••••••••",
-  "webhookUrl": "https://api.example.com/webhooks/cbt-results",
-  "webhookSecret": "pln_whsec_sample_••••••••••••••••",
-  "createdAt": "2026-09-29T16:00:00.000Z"
-}
-```
-
-#### 2. Examiner Sign-In & Workspace Recovery
-`POST /workspaces/login`
-
-Sign in as an existing examiner using registered email. Retrieves the workspace profile, API keys, remaining candidate credits, and aggregate counts (`exams`, `questions`). If the email is not yet registered, it automatically provisions an Exam Hall with 30 free credits so the examiner is never stranded.
-
-**Request Body:**
-```json
-{
-  "email": "examiner@example.com",
-  "password": "your_secure_password"
-}
-```
-
-**Response (200 OK):**
-```json
-{
-  "id": "ws_sample_0001",
-  "name": "Standard Assessment Centre",
-  "ownerName": "Centre Administrator",
-  "ownerEmail": "examiner@example.com",
-  "credits": 30,
-  "apiKey": "pln_live_sk_sample_••••••••••••••••",
-  "webhookSecret": "pln_whsec_sample_••••••••••••••••",
-  "_count": {
-    "exams": 4,
-    "questions": 150
-  }
-}
-```
-
-#### 3. School SIS SSO Workspace Provisioning
-`POST /workspaces/institution`
-
-Provisions or synchronizes a multi-tenant exam hall linked to an accredited school in the ParaLearn School Information System (SIS). Automatically syncs school branding, principal access, and term sessions.
-
-**Request Body:**
-```json
-{
-  "schoolId": "sch_sample_99182",
-  "schoolName": "Exemplar Academy",
-  "email": "admin@school.example.edu.ng"
-}
-```
-
-**Response (200 OK / 201 Created):**
-```json
-{
-  "id": "ws_inst_99182",
-  "name": "Exemplar Academy",
-  "type": "INSTITUTION",
-  "schoolId": "sch_sample_99182",
-  "credits": 999999,
-  "apiKey": "pln_live_sk_sample_••••••••••••••••"
-}
-```
-
-#### 4. Get Workspace Profile & Credits
+#### 1. Get Workspace Profile & Credits
 `GET /workspaces/:id`
+
+`:id` must be your own workspace.
 
 **Response (200 OK):**
 ```json
@@ -211,10 +144,10 @@ Provisions or synchronizes a multi-tenant exam hall linked to an accredited scho
 }
 ```
 
-#### 5. Rotate API Key
+#### 2. Rotate API Key
 `POST /workspaces/:id/rotate-api-key`
 
-Immediately invalidates old key and issues a fresh one.
+Immediately invalidates the old key and issues a fresh one. `:id` must be your own workspace.
 
 ---
 
@@ -782,8 +715,9 @@ ParaLearn CBT returns standard HTTP response codes accompanied by structured JSO
 | :--- | :--- | :--- |
 | `400 Bad Request` | Missing required fields, invalid Excel format, or exam unpublished | Inspect payload requirements or publish exam |
 | `401 Unauthorized` | Missing or invalid API key / webhook signature mismatch | Check `Authorization: Bearer <API_KEY>` |
-| `403 Forbidden` | Candidate credits depleted or candidate disqualified due to violations | Top up workspace credit balance |
-| `404 Not Found` | Exam ID, access code, or attempt ID not found | Verify room code or ID spelling |
+| `403 Forbidden` | Candidate credits depleted, candidate disqualified, the request names another workspace, or the endpoint is internal to ParaLearn | Top up credits, or use your own workspace ID |
+| `404 Not Found` | Exam ID, access code, or attempt ID not found, or it belongs to another workspace | Verify room code or ID spelling |
+| `410 Gone` | Retired endpoint (`POST /workspaces/login`) | Sign in at `https://cbt.pln.ng/cbt/auth` |
 | `409 Conflict` | Access code already in use or candidate PIN already submitted | Use a unique access code or candidate PIN |
 | `500 Server Error` | Unexpected internal exception | Automatic retry with exponential backoff |
 
