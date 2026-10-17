@@ -1,8 +1,7 @@
-import { Controller, Post, Get, Param, Res } from "@nestjs/common";
+import { Controller, Get, Param, Res } from "@nestjs/common";
 import { ApiTags, ApiOperation } from "@nestjs/swagger";
 import { Response } from "express";
 import { SyncService } from "./sync.service";
-import { Public } from "../access/public.decorator";
 import { Caller, type CbtCaller } from "../access/caller.decorator";
 import { CbtAccessService } from "../access/cbt-access.service";
 
@@ -13,13 +12,6 @@ export class SyncController {
     private readonly syncService: SyncService,
     private readonly access: CbtAccessService,
   ) {}
-
-  @Post("export-scores/:examId")
-  @ApiOperation({ summary: "Sync submitted candidate scores directly to ParaLearn Core Term Report Cards" })
-  async exportScoresToParaLearn(@Param("examId") examId: string, @Caller() caller: CbtCaller) {
-    await this.access.assertExam(caller, examId);
-    return this.syncService.exportExamScoresToParaLearn(examId);
-  }
 
   @Get("export-csv/:examId")
   @ApiOperation({ summary: "Download CSV score sheet of all candidate attempts" })

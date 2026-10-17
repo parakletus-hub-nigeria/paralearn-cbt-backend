@@ -498,10 +498,8 @@ Retrieves the candidate's formal result slip.
 
 Returns a downloadable `text/csv` stream containing candidate names, PINs, external student IDs, raw scores, percentages, WAEC grades, violations, and submission timestamps.
 
-#### 2. Sync to ParaLearn Core Report Cards
-`POST /sync/export-scores/:examId`
-
-Dispatches all submitted scores to the school's continuous assessment term report cards.
+#### 2. ParaLearn Report Cards
+School workspaces put exam results on ParaLearn report cards from the exam's candidate monitor in the CBT app: link the exam to a subject, classes, an assessment category and a term, then release finished results. This is not part of the external API.
 
 ---
 
