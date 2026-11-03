@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Post, Query } from "@nestjs/common";
+import { BadRequestException, Body, Controller, Delete, Get, Param, Post, Query } from "@nestjs/common";
 import { ApiOperation, ApiQuery, ApiTags } from "@nestjs/swagger";
 import { CandidatesService } from "./candidates.service";
 import { BulkUpsertCandidatesDto, UpsertCandidateDto } from "./dto/candidate.dto";
@@ -37,7 +37,10 @@ export class CandidatesController {
     @Caller() caller: CbtCaller,
     @Query("search") search?: string
   ) {
-    if (caller.kind === "workspace" || examId) await this.access.assertExam(caller, examId);
+    // Without an exam, Prisma drops the filter and returns every candidate (with PINs)
+    // on the platform, so an exam is always required, even for the service key.
+    if (!examId) throw new BadRequestException("examId is required");
+    await this.access.assertExam(caller, examId);
     return this.candidatesService.listExamCandidates(examId, search);
   }
 
