@@ -10,6 +10,7 @@ import { SyncModule } from "./sync/sync.module";
 import { CandidatesModule } from "./candidates/candidates.module";
 import { ImportModule } from "./import/import.module";
 import { AccessModule } from "./access/access.module";
+import { ConsoleModule } from "./console/console.module";
 
 @Module({
   imports: [
@@ -27,6 +28,7 @@ import { AccessModule } from "./access/access.module";
     AttemptsModule,
     SyncModule,
     ImportModule,
+    ConsoleModule,
   ],
 })
 export class AppModule {}
